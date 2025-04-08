@@ -1,106 +1,118 @@
-import { useState } from "react";
 import React from "react";
 
 const PersonalInfoForm = ({ data, updateData }) => {
-  const [form, setForm] = useState(data);
-
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm({ ...form, [name]: value });
+    updateData("personal_info", { [name]: value });
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file && file.type === "image/jpeg") {
-      setForm({ ...form, profilePhoto: file });
-    } else {
-      alert("Please upload a valid .jpg file.");
+  const handlePhoneChange = (e) => {
+    const value = e.target.value;
+    if (/^\d{0,10}$/.test(value)) {
+      updateData("personal_info", { phone: value });
     }
   };
 
-  const handleBlur = () => {
-    updateData("personal_info", form);
+  const handleFileChange = (e) => {
+    updateData("profilePhoto", {}, e.target.files[0]);
   };
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold">Personal Information</h2>
+      <h3 className="text-xl font-semibold">Personal Information</h3>
 
       <div>
-        <label className="block font-medium">Full Name</label>
+        <label htmlFor="fullName" className="block mb-1 font-medium">
+          Full Name
+        </label>
         <input
           type="text"
+          id="fullName"
           name="fullName"
-          value={form.fullName}
+          value={data.fullName}
           onChange={handleChange}
-          onBlur={handleBlur}
+          placeholder="Enter full name"
           className="w-full p-2 border rounded"
           required
         />
       </div>
 
       <div>
-        <label className="block font-medium">Email</label>
+        <label htmlFor="email" className="block mb-1 font-medium">
+          Email
+        </label>
         <input
           type="email"
+          id="email"
           name="email"
-          value={form.email}
+          value={data.email}
           onChange={handleChange}
-          onBlur={handleBlur}
+          placeholder="Enter email"
           className="w-full p-2 border rounded"
           required
         />
       </div>
 
       <div>
-        <label className="block font-medium">Phone</label>
+        <label htmlFor="phone" className="block mb-1 font-medium">
+          Phone Number
+        </label>
         <input
-          type="tel"
+          type="text"
+          id="phone"
           name="phone"
-          value={form.phone}
-          onChange={handleChange}
-          onBlur={handleBlur}
-          className="w-full p-2 border rounded"
+          value={data.phone}
+          onChange={handlePhoneChange}
+          placeholder="Enter phone number"
           required
+          pattern="[0-9]{10}"
+          className="w-full p-3 border rounded-md focus:ring-2 focus:ring-blue-400 focus:outline-none"
         />
       </div>
 
       <div>
-        <label className="block font-medium">Gender</label>
+        <label htmlFor="gender" className="block mb-1 font-medium">
+          Gender
+        </label>
         <select
+          id="gender"
           name="gender"
-          value={form.gender}
+          value={data.gender}
           onChange={handleChange}
-          onBlur={handleBlur}
           className="w-full p-2 border rounded"
           required
         >
-          <option value="">Select</option>
-          <option value="Male">Male</option>
-          <option value="Female">Female</option>
+          <option value="">Select Gender</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
         </select>
       </div>
 
       <div>
-        <label className="block font-medium">Date of Birth</label>
+        <label htmlFor="dob" className="block mb-1 font-medium">
+          Date of Birth
+        </label>
         <input
           type="date"
+          id="dob"
           name="dob"
-          value={form.dob}
+          value={data.dob}
           onChange={handleChange}
-          onBlur={handleBlur}
           className="w-full p-2 border rounded"
           required
         />
       </div>
 
       <div>
-        <label className="block font-medium">Profile Photo (.jpg only)</label>
+        <label htmlFor="profilePhoto" className="block mb-1 font-medium">
+          Profile Photo (.jpg only)
+        </label>
         <input
           type="file"
+          id="profilePhoto"
           accept=".jpg"
           onChange={handleFileChange}
-          className="w-full p-2 border rounded"
+          className="w-full"
         />
       </div>
     </div>

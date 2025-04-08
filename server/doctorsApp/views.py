@@ -1,14 +1,14 @@
 from datetime import datetime
 import random
 from rest_framework.response import Response
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import api_view
 from rest_framework import status
 from db_connections import doctors_collection, otp_collection, doctors_info_collection
 import bcrypt
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from mailjetMailSender import send_email
+import os
+from django.conf import settings
 
 def get_tokens_for_doctor(doctor_data):
     refresh = RefreshToken.for_user(doctor_data)
@@ -17,78 +17,127 @@ def get_tokens_for_doctor(doctor_data):
         'access': str(refresh.access_token)
     }
 
-@api_view(["POST"])
-def register_doctor(request):
-    data = request.data
-    personal_info = data.get("personal_info", {})
-    professional_info = data.get("professional_info", {})
-    verification_info = data.get("verification_info", {})
-    password = data.get("password")
+def handle_uploaded_file(file, folder, filename=None):
+    if not filename:
+        filename = file.name
+    path = os.path.join(settings.MEDIA_ROOT, folder)
+    os.makedirs(path, exist_ok=True)
+    filepath = os.path.join(path, filename)
+    with open(filepath, "wb+") as destination:
+        for chunk in file.chunks():
+            destination.write(chunk)
+    return os.path.join(folder, filename)
 
-    email = personal_info.get("email")
+@api_view(["POST"])
+def upload_doctor_files(request):
+    email = request.POST.get("email")
+    if not email:
+        return Response({"error": "Email is required to upload files"}, status=status.HTTP_400_BAD_REQUEST)
+
+    doctor = doctors_collection.find_one({"personal_info.email": email})
+    if not doctor:
+        return Response({"error": "Doctor not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    files = request.FILES
+    updated_fields = {}
+
+    profile_photo = files.get("profilePhoto")
+    if profile_photo:
+        path = handle_uploaded_file(profile_photo, "doctor_photos", f"{email}_profile.{profile_photo.name.split('.')[-1]}")
+        updated_fields["personal_info.profilePhoto"] = path
+
+    degree_cert = files.get("degree_certificate")
+    if degree_cert:
+        path = handle_uploaded_file(degree_cert, "documents", f"{email}_degree.{degree_cert.name.split('.')[-1]}")
+        updated_fields["verification_info.documents.degree_certificate"] = path
+
+    med_license = files.get("medical_license")
+    if med_license:
+        path = handle_uploaded_file(med_license, "documents", f"{email}_license.{med_license.name.split('.')[-1]}")
+        updated_fields["verification_info.documents.medical_license"] = path
+
+    if updated_fields:
+        doctors_collection.update_one({"personal_info.email": email}, {"$set": updated_fields})
+        return Response({"message": "Files uploaded successfully"}, status=status.HTTP_200_OK)
+
+    return Response({"error": "No files found in request"}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["POST"])
+def send_doctor_otp(request):
+    email = request.data.get("email")
+    print("email got: ", email)
+
+    if not email:
+        return Response({"error": "Email is required to send OTP"}, status=status.HTTP_400_BAD_REQUEST)
 
     if doctors_collection.find_one({"personal_info.email": email}):
+        print("email already exists")
         return Response({"error": "Email already registered"}, status=status.HTTP_400_BAD_REQUEST)
 
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-    data["password"] = hashed_password.decode('utf-8')
-    data["created_at"] = datetime.utcnow()
-    data["verification_info"]["approval_status"] = "pending"
-
     otp = str(random.randint(100000, 999999))
-    otp_collection.update_one(
-        {"email": email}, 
-        {"$set": {"otp": otp, "doctor_data": data}}, 
-        upsert=True
-    )
+    otp_collection.update_one({"email": email}, {"$set": {"otp": otp}}, upsert=True)
 
     subject = "Your OTP for Doctor Registration"
     message = f"Your OTP is: {otp}"
 
     status_code, response = send_email(email, subject, message)
     if status_code == 200:
-        return Response({"message": f"OTP sent successfully: {otp} (for testing)"}, status=status.HTTP_200_OK)
+        return Response({"message": f"OTP sent to {email} successfully"}, status=status.HTTP_200_OK)
     else:
         return Response({"error": "Failed to send OTP email"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(["POST"])
-def verify_doctor_otp(request):
-    data = request.data
-    email = data.get("email")
-    user_otp = data.get("otp")
+def register_doctor(request):
+    try:
+        data = request.data
 
-    stored_otp = otp_collection.find_one({"email": email})
+        personal_info = data.get("personal_info", {})
+        professional_info = data.get("professional_info", {})
+        verification_info = data.get("verification_info", {})
 
-    if not stored_otp or stored_otp["otp"] != user_otp:
-        return Response({"error": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
+        email = personal_info.get("email")
+        password = data.get("password")
+        confirm_password = data.get("confirm_password")
+        user_otp = data.get("enter_OTP")
 
-    doctor_data = stored_otp["doctor_data"]
-    doctor_data["created_at"] = datetime.utcnow()
+        print(f"emaiL: {email}, password: {password}, conf_pass: {confirm_password}, otp: {user_otp}")
+        if not all([email, password, confirm_password, user_otp]):
+            print("email, password, confirm_password, user_otp maybe missing")
+            return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
 
-    doctors_collection.insert_one(doctor_data)
+        if password != confirm_password:
+            print("Passwords do not match")
+            return Response({"error": "Passwords do not match"}, status=status.HTTP_400_BAD_REQUEST)
 
-    otp_collection.delete_one({"email": email})
+        if doctors_collection.find_one({"personal_info.email": email}):
+            print("Email already registered")
+            return Response({"error": "Email already registered"}, status=status.HTTP_400_BAD_REQUEST)
 
-    return Response({"message": "Registration successful"}, status=status.HTTP_201_CREATED)
+        stored_otp_data = otp_collection.find_one({"email": email})
+        if not stored_otp_data or stored_otp_data["otp"] != user_otp:
+            print("Invalid or expired OTP")
+            return Response({"error": "Invalid or expired OTP"}, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(["POST"])
-@authentication_classes([JWTAuthentication])
-@permission_classes([IsAuthenticated])
-def add_doctor_info(request):
-    data = request.data
-    doctor = request.user
-    email = request.email
+        verification_info["approval_status"] = "pending"
 
-    doctor_data = doctors_collection.find_one({"email": email})
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+        full_data = {
+            "personal_info": personal_info,
+            "professional_info": professional_info,
+            "verification_info": verification_info,
+            "password": hashed_password.decode('utf-8'),
+            "created_at": datetime.utcnow()
+        }
 
-    if not doctor_data:
-        return Response({"error": "Doctor details not found"}, status=status.HTTP_404_NOT_FOUND)
-    
-    data["doctor_id"] = str(doctor_data["_id"])
-    data["created_at"] = datetime.utcnow()
+        print("inserted data to db")
+        doctors_collection.insert_one(full_data)
+        otp_collection.delete_one({"email": email})
 
-    doctors_info_collection.insert_one(data)
-    return Response({"message": "Medical information added successfully"}, status=status.HTTP_201_CREATED)
+        return Response({"success": True, "message": "Registration successful"}, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        print("Exception occurred during doctor registration:", str(e))
+        return Response({"error": "Something went wrong. Please try again later."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(["POST"])
 def doctor_login(request):
@@ -114,7 +163,7 @@ def doctor_login(request):
     message = f"Your OTP is: {otp}"
 
     status_code, response = send_email(email, subject, message)
-    
+
     if status_code == 200:
         return Response({"message": f"OTP sent: {otp} (for testing)"}, status=status.HTTP_200_OK)
     else:
@@ -123,7 +172,7 @@ def doctor_login(request):
 class CustomUser:
     def __init__(self, doctor_data):
         self.id = str(doctor_data["_id"])
-        self.email = doctor_data["email"]
+        self.email = doctor_data["personal_info"]["email"]
 
 @api_view(["POST"])
 def verify_doctor_login_otp(request):
@@ -135,9 +184,8 @@ def verify_doctor_login_otp(request):
 
     if not stored_otp or stored_otp["otp"] != user_otp:
         return Response({"error": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
-    
-    doctor_data = doctors_collection.find_one({"email": email})
 
+    doctor_data = doctors_collection.find_one({"personal_info.email": email})
     if not doctor_data:
         return Response({"error": "Doctor Not Found"}, status=status.HTTP_404_NOT_FOUND)
 
