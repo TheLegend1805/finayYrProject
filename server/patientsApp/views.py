@@ -3,7 +3,7 @@ import random
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework import status
-from db_connections import patient_collection, otp_collection, patient_medical_info
+from db_connections import patient_collection, patient_otp_collection, patient_medical_info
 import bcrypt
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from mailjetMailSender import send_email
@@ -34,7 +34,7 @@ def register_patient(request):
     data["password"] = hashed_password.decode('utf-8')
 
     otp = str(random.randint(100000, 999999))
-    otp_collection.update_one(
+    patient_otp_collection.update_one(
         {"email": email},
         {"$set": {"otp": otp, "patient_data": data}}, 
         upsert=True
@@ -54,17 +54,19 @@ def verify_otp(request):
     email = data.get("email")
     user_otp = data.get("otp")
 
-    stored_otp = otp_collection.find_one({"email": email})
+    stored_otp = patient_otp_collection.find_one({"email": email})
 
     if not stored_otp or stored_otp["otp"] != user_otp:
         return Response({"error": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
 
     patient_data = stored_otp["patient_data"]
     patient_data["created_at"] = datetime.utcnow()
+    patient_data['user_type'] = "patient"
+    patient_data['approval_status'] = "pending"
 
     patient_collection.insert_one(patient_data)
 
-    otp_collection.delete_one({"email": email})
+    patient_otp_collection.delete_one({"email": email})
 
     return Response({"message": "Registration successful"}, status=status.HTTP_201_CREATED)
 
@@ -101,7 +103,7 @@ def patient_login(request):
         return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
     
     otp = str(random.randint(100000, 999999))
-    otp_collection.update_one(
+    patient_otp_collection.update_one(
         {"email": email},
         {"$set": {"otp": otp, "patient_id": str(patient["_id"])}},
         upsert=True,
@@ -129,7 +131,7 @@ def verify_login_otp(request):
     user_otp = data.get("otp")
     print("user_otp: ", user_otp, "typr: ", type(user_otp))
 
-    stored_otp = otp_collection.find_one({"email": email})
+    stored_otp = patient_otp_collection.find_one({"email": email})
     print("stored_otp: ", stored_otp)
 
     if not stored_otp or stored_otp["otp"] != user_otp:
@@ -141,7 +143,7 @@ def verify_login_otp(request):
     if not patient:
         return Response({"error": "Patient Not Found"}, status=status.HTTP_404_NOT_FOUND)
 
-    otp_collection.delete_one({"email": email})
+    patient_otp_collection.delete_one({"email": email})
     custom_user = CustomUser(patient)
     tokens = get_tokens_for_user(custom_user)
 

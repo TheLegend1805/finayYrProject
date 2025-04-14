@@ -3,7 +3,7 @@ import random
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from rest_framework import status
-from db_connections import doctors_collection, otp_collection, doctors_info_collection
+from db_connections import doctors_collection, doctors_otp_collection
 import bcrypt
 from rest_framework_simplejwt.tokens import RefreshToken
 from mailjetMailSender import send_email
@@ -75,7 +75,7 @@ def send_doctor_otp(request):
         return Response({"error": "Email already registered"}, status=status.HTTP_400_BAD_REQUEST)
 
     otp = str(random.randint(100000, 999999))
-    otp_collection.update_one({"email": email}, {"$set": {"otp": otp}}, upsert=True)
+    doctors_otp_collection.update_one({"email": email}, {"$set": {"otp": otp}}, upsert=True)
 
     subject = "Your OTP for Doctor Registration"
     message = f"Your OTP is: {otp}"
@@ -113,7 +113,7 @@ def register_doctor(request):
             print("Email already registered")
             return Response({"error": "Email already registered"}, status=status.HTTP_400_BAD_REQUEST)
 
-        stored_otp_data = otp_collection.find_one({"email": email})
+        stored_otp_data = doctors_otp_collection.find_one({"email": email})
         if not stored_otp_data or stored_otp_data["otp"] != user_otp:
             print("Invalid or expired OTP")
             return Response({"error": "Invalid or expired OTP"}, status=status.HTTP_400_BAD_REQUEST)
@@ -122,6 +122,7 @@ def register_doctor(request):
 
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
         full_data = {
+            "user_type": "doctor",
             "personal_info": personal_info,
             "professional_info": professional_info,
             "verification_info": verification_info,
@@ -131,7 +132,7 @@ def register_doctor(request):
 
         print("inserted data to db")
         doctors_collection.insert_one(full_data)
-        otp_collection.delete_one({"email": email})
+        doctors_otp_collection.delete_one({"email": email})
 
         return Response({"success": True, "message": "Registration successful"}, status=status.HTTP_201_CREATED)
 
@@ -153,7 +154,7 @@ def doctor_login(request):
         return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
     otp = str(random.randint(100000, 999999))
-    otp_collection.update_one(
+    doctors_otp_collection.update_one(
         {"email": email},
         {"$set": {"otp": otp, "doctor_id": str(doctor["_id"])}},
         upsert=True,
@@ -180,7 +181,7 @@ def verify_doctor_login_otp(request):
     email = data.get("email")
     user_otp = data.get("otp")
 
-    stored_otp = otp_collection.find_one({"email": email})
+    stored_otp = doctors_otp_collection.find_one({"email": email})
 
     if not stored_otp or stored_otp["otp"] != user_otp:
         return Response({"error": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
@@ -189,7 +190,7 @@ def verify_doctor_login_otp(request):
     if not doctor_data:
         return Response({"error": "Doctor Not Found"}, status=status.HTTP_404_NOT_FOUND)
 
-    otp_collection.delete_one({"email": email})
+    doctors_otp_collection.delete_one({"email": email})
     custom_doctor = CustomUser(doctor_data)
     tokens = get_tokens_for_doctor(custom_doctor)
 

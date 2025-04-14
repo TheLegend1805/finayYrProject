@@ -4,7 +4,7 @@ import { toast } from "react-toastify";
 import PersonalInfoForm from "./PersonalInfoForm.jsx";
 import ProfessionalInfoForm from "./ProfessionalInfoForm.jsx";
 import VerificationInfoForm from "./VerificationInfoForm.jsx";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 const DoctorRegistration = () => {
   const navigate = useNavigate();
@@ -264,6 +264,14 @@ const DoctorRegistration = () => {
           updateData={handleSectionUpdate}
         />
       )}
+
+      <p className="mt-4 text-center">
+        Have an account?
+        <Link to="/doctor-login" className="text-blue-600 hover:underline">
+          {" "}
+          Login
+        </Link>
+      </p>
 
       {currentStep === 3 && (
         <>

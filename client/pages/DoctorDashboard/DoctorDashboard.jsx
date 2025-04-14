@@ -1,17 +1,16 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
-const PatientDashboard = () => {
+const DoctorDashboard = () => {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    navigate("/patient-login");
+    navigate("/doctor-login");
   };
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
       <h1 className="text-3xl font-bold text-gray-800 mb-6">
-        Patient Dashboard
+        Doctor Dashboard
       </h1>
 
       <button
@@ -24,4 +23,4 @@ const PatientDashboard = () => {
   );
 };
 
-export default PatientDashboard;
+export default DoctorDashboard;

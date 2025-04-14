@@ -22,6 +22,8 @@ INSTALLED_APPS = [
     'corsheaders',
     'patientsApp',
     'rest_framework_simplejwt',
+    'adminsApp',
+    'doctorsApp',
 ]
 
 MIDDLEWARE = [

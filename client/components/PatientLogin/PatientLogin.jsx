@@ -48,7 +48,6 @@ const PatientLogin = () => {
       console.log("token: ", token);
 
       if (token) {
-        // login(token);
         console.log("Token saved after OTP:", token);
         navigate("/patient-dashboard");
       } else {
